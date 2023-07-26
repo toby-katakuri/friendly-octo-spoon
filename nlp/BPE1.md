@@ -40,6 +40,7 @@ In regular expressions, the caret symbol (`^`) has two different behaviors depen
 
 Let's explore both cases in more detail:
 
+---
 1. Outside Character Class (Line Start Anchor):
 When the caret (`^`) is used outside a character class, it serves as an anchor that asserts the position at the start of a line or the start of the input string. It does not consume any characters; instead, it asserts that the next match should start at the beginning of a line or the beginning of the input string.
 
@@ -72,6 +73,8 @@ Output:
 
 Explanation:
 In this example, the regular expression `^Hello` matches "Hello" only when it appears at the start of a line (the first occurrence). It does not match "Hello" in "Hi, Hello, World!" because the second occurrence of "Hello" is not at the start of a line.
+
+----
 
 2. Inside Character Class (Negation):
 When the caret (`^`) is used inside a character class, it negates the class, making it match any character that is not listed within the brackets.
