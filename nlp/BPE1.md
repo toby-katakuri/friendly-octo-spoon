@@ -1,5 +1,5 @@
-# BPE
-阿达
+# BPE（Byte-Pair Encoding）
+
 ### 首先是对文本进行基础分词
 ```python
 import re
@@ -40,7 +40,6 @@ In regular expressions, the caret symbol (`^`) has two different behaviors depen
 
 Let's explore both cases in more detail:
 
----
 1. Outside Character Class (Line Start Anchor):
 When the caret (`^`) is used outside a character class, it serves as an anchor that asserts the position at the start of a line or the start of the input string. It does not consume any characters; instead, it asserts that the next match should start at the beginning of a line or the beginning of the input string.
 
@@ -73,8 +72,6 @@ Output:
 
 Explanation:
 In this example, the regular expression `^Hello` matches "Hello" only when it appears at the start of a line (the first occurrence). It does not match "Hello" in "Hi, Hello, World!" because the second occurrence of "Hello" is not at the start of a line.
-
-----
 
 2. Inside Character Class (Negation):
 When the caret (`^`) is used inside a character class, it negates the class, making it match any character that is not listed within the brackets.
@@ -215,3 +212,119 @@ With the `re.UNICODE` flag, the `\w` character class matches Unicode word charac
 
 These examples demonstrate how each flag can modify the behavior of regular expression matching to suit specific requirements, such as matching across lines, matching any character (including newlines), and handling Unicode characters correctly.
 
+### 词典训练过程
+```python
+class BPETokenizer():
+    special = ['<UNK>', '<PAD>', '<END>', '<MASK>']
+
+    def __init__(self, vocab_size=1000, lowercase=True, basic_tokenizer=wordpunct_tokenize):
+        self.lowercase = lowercase
+        self.vocab_size = vocab_size
+        self.basic_tokenizer = basic_tokenizer
+
+    def fit(self, corpus: list, max_steps=10000, out_fn='vocab.txt'):
+        '''
+        分词器训练，返回训练得到的vocabulary
+        '''
+
+        ############### 统计初始词典 ###############
+        # 将所有字母变为小写
+        if self.lowercase:
+            corpus = [s.lower() for s in corpus]
+        word_corpus = Counter([tuple(data) + ("</w>",) for data in toolz.concat(map(self.basic_tokenizer, corpus))])
+        vocab = self._count_vocab(word_corpus)
+
+        ############### 逐步合并初始词典中的高频二元组 ###############
+        for i in range(max_steps):
+            word_corpus, bi_cnt = self._fit_step(word_corpus)
+            vocab = self._count_vocab(word_corpus)
+            if len(vocab) >= self.vocab_size or bi_cnt < 0: break
+
+        ############### 将一些特殊词加入最终的词典 ###############
+        for s in self.special:
+            if s not in vocab:
+                vocab.insert(0, (s, 99999))
+
+        ############### 导出词典 ###############
+        with open(out_fn, 'w') as f:
+            f.write('\n'.join([w for w, _ in vocab]))
+        self.vocab = [token for token, _ in vocab]
+        return vocab
+
+    def _count_vocab(self, word_corpus):
+        _r = Counter([data for data in toolz.concat([word * cnt for word, cnt in word_corpus.items()])])
+        _r = sorted(_r.items(), key=lambda x: -x[1])
+        return _r
+
+    def _fit_step(self, word_corpus):
+        ngram = 2
+        bigram_counter = Counter()
+
+        ############### 以步长1，窗口尺寸2，在每个单词上滚动，统计二元组频次 ###############
+        for token, count in word_corpus.items():
+            if len(token) < 2: continue
+            for bigram in toolz.sliding_window(ngram, token):
+                bigram_counter[bigram] += count
+
+        ############### 选出频次最大的二元组 ###############
+        if len(bigram_counter) > 0:
+            max_bigram = max(bigram_counter, key=bigram_counter.get)
+        else:
+            return word_corpus, -1
+        bi_cnt = bigram_counter.get(max_bigram)
+
+        ############### 从corpus中将最大二元组出现的地方替换成一个token ###############
+        for token in word_corpus:
+            _new_token = tuple(' '.join(token).replace(' '.join(max_bigram), ''.join(max_bigram)).split(' '))
+            if _new_token != token:
+                word_corpus[_new_token] = word_corpus[token]
+                word_corpus.pop(token)
+        return word_corpus, bi_cnt
+```
+
+## toolz.concat
+```python
+import toolz
+corpus = ["Hello, world!", "How are you?"]
+
+def basic_tokenizer(text):
+    return wordpunct_tokenize(text)
+
+# Using map to tokenize the corpus
+tokenized_iter = map(basic_tokenizer, corpus)
+print(tokenized_iter)
+```
+```
+<map object at 0x00000175B363FB80>
+```
+```python
+# Converting the iterator to a list to see the tokenized sequences
+tokenized_corpus = list(map(basic_tokenizer, corpus))
+print(tokenized_corpus)
+```
+```
+[['Hello', ',', 'world', '!'], ['How', 'are', 'you', '?']]
+```
+```python
+for data in toolz.concat(map(basic_tokenizer, corpus)):
+    print(data)
+```
+```
+Hello
+,
+world
+!
+How
+are
+you
+?
+```
+```python
+l = [tuple(data) + ("</w>",) for data in toolz.concat(map(basic_tokenizer, corpus))]
+print(l)
+print(Counter(l))
+```
+```
+[('H', 'e', 'l', 'l', 'o', '</w>'), (',', '</w>'), ('w', 'o', 'r', 'l', 'd', '</w>'), ('!', '</w>'), ('H', 'o', 'w', '</w>'), ('a', 'r', 'e', '</w>'), ('y', 'o', 'u', '</w>'), ('?', '</w>')]
+Counter({('H', 'e', 'l', 'l', 'o', '</w>'): 1, (',', '</w>'): 1, ('w', 'o', 'r', 'l', 'd', '</w>'): 1, ('!', '</w>'): 1, ('H', 'o', 'w', '</w>'): 1, ('a', 'r', 'e', '</w>'): 1, ('y', 'o', 'u', '</w>'): 1, ('?', '</w>'): 1})
+```
