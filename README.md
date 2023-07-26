@@ -1,2 +1,2 @@
 # friendly-octo-spoon
-my notebooks about study
+这是一个整理笔记的地方
